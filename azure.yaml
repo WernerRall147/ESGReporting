@@ -1,0 +1,13 @@
+# Azure Developer CLI configuration file
+# Learn more about azd here: https://aka.ms/azd
+# Learn more about configuring azd for your project: https://aka.ms/azure-dev-yaml
+
+name: esg-reporting
+metadata:
+  template: esg-reporting-solution
+
+services:
+  esg-cli:
+    project: .
+    language: python
+    host: manual
