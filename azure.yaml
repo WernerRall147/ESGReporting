@@ -4,10 +4,40 @@
 
 name: esg-reporting
 metadata:
-  template: esg-reporting-solution
+  template: esg-reporting-solution@1.0.0
 
+# Infrastructure configuration
+infra:
+  provider: bicep
+  path: infra
+
+# Services configuration
 services:
   esg-cli:
     project: .
     language: python
-    host: manual
+    host: containerapp
+
+# Pipeline configuration
+pipeline:
+  provider: github
+
+# Hooks for deployment lifecycle
+hooks:
+  postdeploy:
+    shell: pwsh
+    run: |
+      Write-Host "Setting up environment configuration..."
+      if (Test-Path ".env.example") {
+        if (-not (Test-Path ".env")) {
+          Copy-Item ".env.example" ".env"
+          Write-Host "Created .env file from template. Please update with your values."
+        }
+      }
+      Write-Host "Installing Python dependencies..."
+      pip install -r requirements.txt
+      pip install -e .
+      Write-Host "Running tests to verify installation..."
+      pytest tests/ -v
+      Write-Host "ESG Reporting deployment complete!"
+      Write-Host "Run 'esg-reporting --help' to get started."
