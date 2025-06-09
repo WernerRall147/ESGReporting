@@ -66,7 +66,7 @@ def test_carbon_optimization_client():
         print("  ✅ Client initialization successful")        # Test enum values
         assert ReportType.MONTHLY_SUMMARY_REPORT.value == "MonthlySummaryReport"
         assert EmissionScope.SCOPE1.value == "Scope1"
-        assert CategoryType.COMPUTE.value == "compute"
+        assert CategoryType.RESOURCE.value == "Resource"
         print("  ✅ Enum values correct")
         
         # Test query creation

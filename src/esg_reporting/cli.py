@@ -386,8 +386,7 @@ def fetch_emissions(subscription_id, report_type, start_date, end_date, output, 
             end_date = datetime.now().strftime('%Y-%m-%d')
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-        
-        # Convert scope strings to enums
+          # Convert scope strings to enums
         scopes = []
         if scope:
             scope_map = {
@@ -397,8 +396,15 @@ def fetch_emissions(subscription_id, report_type, start_date, end_date, output, 
             }
             scopes = [scope_map[s] for s in scope]
         else:
-            scopes = [EmissionScope.SCOPE1, EmissionScope.SCOPE2]  # Default scopes
-          # Create client and query
+            scopes = [EmissionScope.SCOPE1, EmissionScope.SCOPE2]  # Default scopes        # Map report types
+        report_type_map = {
+            'monthly_summary': ReportType.MONTHLY_SUMMARY_REPORT,
+            'overall_summary': ReportType.OVERALL_SUMMARY_REPORT,
+            'resource_details': ReportType.ITEM_DETAILS_REPORT,
+            'top_emitters': ReportType.TOP_ITEMS_SUMMARY_REPORT
+        }
+
+        # Create client and query
         client = CarbonOptimizationClient()
         
         # Create date range
@@ -415,15 +421,8 @@ def fetch_emissions(subscription_id, report_type, start_date, end_date, output, 
         click.echo(f"Fetching {report_type} emissions data from {start_date} to {end_date}...")
         click.echo(f"Subscription: {subscription_id}")
         
-        # Fetch data based on report type
-        report_type_map = {
-            'monthly_summary': ReportType.MONTHLY_SUMMARY,
-            'overall_summary': ReportType.OVERALL_SUMMARY,
-            'resource_details': ReportType.RESOURCE_DETAILS,
-            'top_emitters': ReportType.TOP_EMITTERS
-        }
-        
-        df = client.get_emissions_data(query, report_type_map[report_type])
+        # Fetch data
+        df = client.get_emissions_data(query)
         
         if df.empty:
             click.echo("No emissions data found for the specified criteria.")
