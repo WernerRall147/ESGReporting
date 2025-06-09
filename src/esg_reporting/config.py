@@ -7,7 +7,8 @@ data and environment variables for non-sensitive configuration.
 
 import os
 from typing import Optional
-from pydantic import BaseSettings, Field
+from pydantic_settings import BaseSettings
+from pydantic import Field
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 
@@ -35,10 +36,10 @@ class Settings(BaseSettings):
     # Monitoring
     log_level: str = Field("INFO", env="LOG_LEVEL")
     enable_azure_monitor: bool = Field(True, env="ENABLE_AZURE_MONITOR")
-    
-    class Config:
+      class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "allow"  # Allow extra fields from environment
 
 
 class SecureConfigManager:

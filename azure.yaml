@@ -13,7 +13,7 @@ infra:
 
 # Services configuration
 services:
-  esg-cli:
+  esg-reporting:
     project: .
     language: python
     host: containerapp
