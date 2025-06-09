@@ -9,13 +9,15 @@ import click
 import asyncio
 import logging
 import json
+import pandas as pd
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from .config import settings
 from .storage import ESGBlobStorageClient
 from .processor import ESGDataProcessor
+from .carbon_optimization import CarbonOptimizationClient, EmissionsQuery, ReportType, EmissionScope, CategoryType
 
 
 # Configure logging
@@ -341,7 +343,7 @@ def process(file_path: str, entity_type: str, output_dir: str, output_format: st
 def config():
     """Show current configuration settings."""
     
-    click.echo("⚙️  ESG Reporting Configuration")
+    click.echo("ESG Reporting Configuration")
     click.echo("=" * 40)
     click.echo(f"Storage Account: {settings.azure_storage_account_name}")
     click.echo(f"Container Name: {settings.azure_container_name}")
@@ -351,6 +353,172 @@ def config():
     click.echo(f"Parallel Upload Threshold: {settings.parallel_upload_threshold_mb} MB")
     click.echo(f"Log Level: {settings.log_level}")
     click.echo(f"Azure Monitor: {'Enabled' if settings.enable_azure_monitor else 'Disabled'}")
+
+
+@cli.group()
+def azure():
+    """Azure Carbon Optimization integration commands."""
+    pass
+
+
+@azure.command('fetch')
+@click.option('--subscription-id', required=True, help='Azure subscription ID')
+@click.option('--report-type', 
+              type=click.Choice(['monthly_summary', 'overall_summary', 'resource_details', 'top_emitters']),
+              default='monthly_summary',
+              help='Type of emissions report to fetch')
+@click.option('--start-date', help='Start date (YYYY-MM-DD), defaults to 30 days ago')
+@click.option('--end-date', help='End date (YYYY-MM-DD), defaults to today')
+@click.option('--output', '-o', help='Output file path (CSV format)')
+@click.option('--scope', 
+              type=click.Choice(['scope1', 'scope2', 'scope3']),
+              multiple=True,
+              help='Emission scopes to include (can specify multiple)')
+def fetch_emissions(subscription_id, report_type, start_date, end_date, output, scope):
+    """Fetch emissions data from Azure Carbon Optimization.
+    
+    Note: This command requires Azure CLI authentication or managed identity.
+    Run 'az login' first to authenticate.
+    """
+    try:
+        # Set up dates
+        if not end_date:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        
+        # Convert scope strings to enums
+        scopes = []
+        if scope:
+            scope_map = {
+                'scope1': EmissionScope.SCOPE1,
+                'scope2': EmissionScope.SCOPE2,
+                'scope3': EmissionScope.SCOPE3
+            }
+            scopes = [scope_map[s] for s in scope]
+        else:
+            scopes = [EmissionScope.SCOPE1, EmissionScope.SCOPE2]  # Default scopes
+          # Create client and query
+        client = CarbonOptimizationClient()
+        
+        # Create date range
+        from .carbon_optimization import DateRange
+        date_range = DateRange(start=start_date, end=end_date)
+        
+        query = EmissionsQuery(
+            report_type=report_type_map[report_type],
+            subscription_list=[subscription_id],
+            carbon_scope_list=scopes,
+            date_range=date_range
+        )
+        
+        click.echo(f"Fetching {report_type} emissions data from {start_date} to {end_date}...")
+        click.echo(f"Subscription: {subscription_id}")
+        
+        # Fetch data based on report type
+        report_type_map = {
+            'monthly_summary': ReportType.MONTHLY_SUMMARY,
+            'overall_summary': ReportType.OVERALL_SUMMARY,
+            'resource_details': ReportType.RESOURCE_DETAILS,
+            'top_emitters': ReportType.TOP_EMITTERS
+        }
+        
+        df = client.get_emissions_data(query, report_type_map[report_type])
+        
+        if df.empty:
+            click.echo("No emissions data found for the specified criteria.")
+            return
+        
+        click.echo(f"Retrieved {len(df)} records.")
+        
+        # Output results
+        if output:
+            df.to_csv(output, index=False)
+            click.echo(f"Data saved to {output}")
+        else:
+            click.echo("\nSample data:")
+            click.echo(df.head().to_string())
+            
+    except Exception as e:
+        click.echo(f"Error fetching emissions data: {e}", err=True)
+        click.echo("Note: Ensure you are authenticated with Azure CLI (run 'az login')", err=True)
+        raise click.ClickException(str(e))
+
+
+@azure.command('integrate')
+@click.option('--emissions-file', required=True, help='Path to emissions CSV file')
+@click.option('--activities-file', help='Path to activities CSV file')
+@click.option('--output-dir', default='output', help='Output directory for integrated reports')
+@click.option('--subscription-id', help='Azure subscription ID for metadata')
+def integrate_emissions(emissions_file, activities_file, output_dir, subscription_id):
+    """Integrate Azure emissions data with ESG reporting."""
+    try:
+        click.echo("Integrating Azure emissions data with ESG reporting...")
+        
+        # Load emissions data
+        emissions_df = pd.read_csv(emissions_file)
+        click.echo(f"Loaded {len(emissions_df)} emissions records.")
+          # Initialize processor
+        processor = ESGDataProcessor()
+        
+        # Create output directory
+        output_path = Path(output_dir)
+        output_path.mkdir(exist_ok=True)
+        
+        # Process emissions data for ESG reporting
+        if activities_file and Path(activities_file).exists():
+            activities_df = pd.read_csv(activities_file)
+            click.echo(f"Loaded {len(activities_df)} activity records.")
+            
+            # Combine with activities data
+            integrated_df = processor.integrate_with_activities(emissions_df, activities_df)
+        else:
+            # Use emissions data directly
+            integrated_df = emissions_df.copy()
+        
+        # Add metadata
+        integrated_df['data_source'] = 'Azure Carbon Optimization'
+        integrated_df['subscription_id'] = subscription_id or 'unknown'
+        integrated_df['integration_timestamp'] = datetime.now().isoformat()
+        
+        # Generate reports
+        report_file = output_path / f"integrated_emissions_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        integrated_df.to_csv(report_file, index=False)
+        
+        # Generate summary
+        summary_file = output_path / f"emissions_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        summary = processor.generate_summary(integrated_df)
+        summary.to_csv(summary_file, index=False)
+        
+        click.echo(f"Integration complete!")
+        click.echo(f"Integrated report: {report_file}")
+        click.echo(f"Summary report: {summary_file}")
+        click.echo(f"Total CO2 equivalent: {integrated_df.get('total_emissions_kg_co2', integrated_df.get('emissions_kg_co2', [0])).sum():.2f} kg")
+        
+    except Exception as e:
+        click.echo(f"Error integrating emissions data: {e}", err=True)
+        raise click.ClickException(str(e))
+
+
+@azure.command('list-subscriptions')
+def list_subscriptions():
+    """List available Azure subscriptions for emissions data.
+    
+    Note: This command requires Azure CLI authentication or managed identity.
+    Run 'az login' first to authenticate.
+    """
+    try:
+        click.echo("Listing available Azure subscriptions...")
+        
+        # For now, we'll use a placeholder since subscription listing requires different API
+        # In a real implementation, you'd use Azure Resource Manager API
+        click.echo("Note: This command requires Azure Resource Manager API integration.")
+        click.echo("Please use the Azure CLI 'az account list' command to list subscriptions.")
+        click.echo("Then use the subscription ID with the 'fetch' command.")
+        
+    except Exception as e:
+        click.echo(f"Error listing subscriptions: {e}", err=True)
+        raise click.ClickException(str(e))
 
 
 if __name__ == '__main__':

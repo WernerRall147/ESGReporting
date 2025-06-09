@@ -347,3 +347,164 @@ class ESGDataProcessor:
             save_report["error"] = str(e)
         
         return save_report
+
+    def integrate_with_activities(self, emissions_df: pd.DataFrame, activities_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Integrate Azure emissions data with existing activities data.
+        
+        Args:
+            emissions_df: DataFrame containing Azure emissions data
+            activities_df: DataFrame containing activities data
+            
+        Returns:
+            Integrated DataFrame combining both datasets
+        """
+        try:
+            logger.info("Integrating emissions data with activities")
+            
+            # Standardize column names for emissions data
+            emissions_df = emissions_df.copy()
+            
+            # Map common column names
+            column_mapping = {
+                'emissionDate': 'date',
+                'emission_date': 'date',
+                'totalEmissions': 'emissions_kg_co2',
+                'total_emissions': 'emissions_kg_co2',
+                'resourceName': 'resource_name',
+                'resource_name': 'resource_name',
+                'serviceName': 'service_name',
+                'service_name': 'service_name',
+                'subscriptionId': 'subscription_id',
+                'subscription_id': 'subscription_id',
+                'scope': 'emission_scope'
+            }
+            
+            # Rename columns if they exist
+            for old_name, new_name in column_mapping.items():
+                if old_name in emissions_df.columns:
+                    emissions_df.rename(columns={old_name: new_name}, inplace=True)
+            
+            # Add metadata columns to emissions data
+            emissions_df['data_type'] = 'azure_emissions'
+            emissions_df['data_source'] = 'Azure Carbon Optimization'
+            
+            # Add metadata columns to activities data  
+            activities_df = activities_df.copy()
+            activities_df['data_type'] = 'activities'
+            
+            # Combine the datasets
+            integrated_df = pd.concat([emissions_df, activities_df], ignore_index=True, sort=False)
+            
+            # Sort by date if available
+            if 'date' in integrated_df.columns:
+                integrated_df['date'] = pd.to_datetime(integrated_df['date'], errors='coerce')
+                integrated_df = integrated_df.sort_values('date')
+            
+            logger.info(f"Integration complete: {len(emissions_df)} emissions + {len(activities_df)} activities = {len(integrated_df)} total records")
+            
+            return integrated_df
+            
+        except Exception as e:
+            logger.error(f"Error integrating emissions with activities: {e}")
+            raise
+    
+    def generate_summary(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate a summary report from integrated data.
+        
+        Args:
+            df: DataFrame containing integrated ESG data
+            
+        Returns:
+            Summary DataFrame with key metrics
+        """
+        try:
+            logger.info("Generating summary report")
+            
+            summary_data = []
+            
+            # Overall metrics
+            total_records = len(df)
+            summary_data.append({
+                'metric': 'Total Records',
+                'value': total_records,
+                'unit': 'count',
+                'category': 'overall'
+            })
+            
+            # Emissions metrics
+            if 'emissions_kg_co2' in df.columns:
+                total_emissions = df['emissions_kg_co2'].sum()
+                avg_emissions = df['emissions_kg_co2'].mean()
+                
+                summary_data.extend([
+                    {
+                        'metric': 'Total Emissions',
+                        'value': round(total_emissions, 2),
+                        'unit': 'kg CO2',
+                        'category': 'emissions'
+                    },
+                    {
+                        'metric': 'Average Emissions per Record',
+                        'value': round(avg_emissions, 2),
+                        'unit': 'kg CO2',
+                        'category': 'emissions'
+                    }
+                ])
+            
+            # Data source breakdown
+            if 'data_type' in df.columns:
+                data_type_counts = df['data_type'].value_counts()
+                for data_type, count in data_type_counts.items():
+                    summary_data.append({
+                        'metric': f'{data_type.title()} Records',
+                        'value': count,
+                        'unit': 'count',
+                        'category': 'data_sources'
+                    })
+            
+            # Emission scope breakdown (if available)
+            if 'emission_scope' in df.columns:
+                scope_counts = df['emission_scope'].value_counts()
+                for scope, count in scope_counts.items():
+                    summary_data.append({
+                        'metric': f'{scope} Records',
+                        'value': count,
+                        'unit': 'count',
+                        'category': 'emission_scopes'
+                    })
+            
+            # Time range (if date column exists)
+            date_cols = [col for col in df.columns if 'date' in col.lower()]
+            if date_cols:
+                date_col = date_cols[0]
+                df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+                valid_dates = df[date_col].dropna()
+                
+                if not valid_dates.empty:
+                    summary_data.extend([
+                        {
+                            'metric': 'Date Range Start',
+                            'value': valid_dates.min().strftime('%Y-%m-%d'),
+                            'unit': 'date',
+                            'category': 'time_range'
+                        },
+                        {
+                            'metric': 'Date Range End',
+                            'value': valid_dates.max().strftime('%Y-%m-%d'),
+                            'unit': 'date',
+                            'category': 'time_range'
+                        }
+                    ])
+            
+            summary_df = pd.DataFrame(summary_data)
+            summary_df['generated_at'] = datetime.now().isoformat()
+            
+            logger.info(f"Summary generated with {len(summary_df)} metrics")
+            
+            return summary_df
+            
+        except Exception as e:
+            logger.error(f"Error generating summary: {e}")
+            raise

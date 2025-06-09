@@ -7,6 +7,7 @@ azure-monitor-opentelemetry>=1.2.0
 # Data Processing
 pandas>=2.1.0
 openpyxl>=3.1.0
+requests>=2.31.0
 
 # Configuration and Utilities
 python-dotenv>=1.0.0

@@ -6,6 +6,7 @@ A comprehensive Python-based solution for automating ESG data export from Micros
 
 - **Automated Data Processing**: Process ESG data from various formats (CSV, Excel, JSON)
 - **Azure Integration**: Seamless connection to Azure Blob Storage with managed identity support
+- **Azure Carbon Optimization**: Direct integration with Azure Carbon Optimization API for real emissions data
 - **Secure Configuration**: Azure Key Vault integration for secrets management
 - **Monitoring & Logging**: Azure Monitor integration with structured logging
 - **Command Line Interface**: Easy-to-use CLI for all operations
@@ -128,7 +129,20 @@ files = client.list_files("container-name")
 - Use the Export button to download data as CSV/Excel
 - Save files locally for processing
 
-### 2. Upload and Process Data
+### 2. Azure Carbon Optimization Integration
+```bash
+# Fetch real Azure emissions data directly from Azure Carbon Optimization API
+esg-reporting azure fetch --subscription-id YOUR_SUB_ID --tenant-id YOUR_TENANT_ID \
+  --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET \
+  --report-type monthly_summary --start-date 2024-01-01 --end-date 2024-12-31 \
+  --output azure_emissions.csv
+
+# Integrate Azure emissions with ESG reporting
+esg-reporting azure integrate --emissions-file azure_emissions.csv \
+  --activities-file activities.csv --output-dir integrated_reports
+```
+
+### 3. Upload and Process Data
 ```bash
 # Upload raw data to Azure
 esg-reporting upload sustainability_export.csv --container raw-data
@@ -140,7 +154,7 @@ esg-reporting process sustainability_export.csv --output processed_data.csv
 esg-reporting upload processed_data.csv --container processed-data
 ```
 
-### 3. Integration with Azure Services
+### 4. Integration with Azure Services
 
 The solution integrates with:
 - **Azure Data Factory**: For orchestrating complex data pipelines
@@ -156,6 +170,7 @@ ESGReporting/
 │   ├── cli.py                  # Command line interface
 │   ├── processor.py            # Data processing logic
 │   ├── storage.py              # Azure Blob Storage client
+│   ├── carbon_optimization.py  # Azure Carbon Optimization API client
 │   ├── config.py               # Configuration management
 │   └── __init__.py             # Package initialization
 ├── infra/                      # Azure infrastructure
@@ -164,9 +179,12 @@ ESGReporting/
 ├── tests/                      # Test suite
 │   ├── test_processor.py       # Data processor tests
 │   └── conftest.py             # Test configuration
+├── examples/                   # Example scripts and workflows
+│   └── example_workflow.py     # Sample integration workflow
 ├── requirements.txt            # Python dependencies
 ├── setup.py                    # Package setup
 ├── azure.yaml                  # Azure Developer CLI configuration
+├── enhanced_demo.py            # Interactive demo with Azure emissions
 ├── .env.example                # Environment variables template
 └── README.md                   # This file
 ```
@@ -230,63 +248,59 @@ The solution includes comprehensive monitoring:
 - **Performance Metrics**: Processing times and success rates tracked
 - **Error Handling**: Detailed error logging with stack traces
 
-## 🔄 Automation Options
+## 🌍 Azure Carbon Optimization Integration
 
-### Power Automate Integration
-For automated exports from Microsoft Sustainability Manager:
-1. Create Power Automate flow triggered by schedule
-2. Export data from MSM to SharePoint/OneDrive
-3. Use the CLI to process and upload to Azure
+### Overview
+The solution directly integrates with Azure Carbon Optimization API to fetch real emissions data from your Azure infrastructure. This provides accurate, real-time carbon footprint data for your cloud resources.
 
-### Azure Data Factory Pipeline
-Create ADF pipeline to:
-1. Monitor blob storage for new files
-2. Trigger processing via CLI or direct Python execution
-3. Move processed data to analytics platforms
+### Authentication Setup
+1. **Service Principal**: Create a service principal with appropriate permissions
+2. **API Permissions**: Grant access to Microsoft.CarbonOptimization/emissions resources
+3. **Environment Variables**: Configure authentication credentials
 
-### GitHub Actions CI/CD
-```yaml
-# Example workflow for automated deployment
-name: Deploy ESG Reporting
-on:
-  push:
-    branches: [main]
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Setup Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.9'
-      - name: Deploy to Azure
-        run: |
-          pip install -r requirements.txt
-          azd deploy
+### Available Commands
+
+```bash
+# Fetch monthly emissions summary
+esg-reporting azure fetch --subscription-id YOUR_SUB_ID --tenant-id YOUR_TENANT_ID \
+  --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET \
+  --report-type monthly_summary --start-date 2024-01-01 --end-date 2024-12-31
+
+# Fetch resource-level details
+esg-reporting azure fetch --subscription-id YOUR_SUB_ID --tenant-id YOUR_TENANT_ID \
+  --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET \
+  --report-type resource_details --scope scope1 scope2
+
+# Integrate with ESG reporting
+esg-reporting azure integrate --emissions-file azure_emissions.csv \
+  --activities-file activities.csv --output-dir reports
 ```
 
-## 📚 API Reference
+### Report Types
+- **monthly_summary**: Aggregated monthly emissions data
+- **overall_summary**: High-level emissions overview
+- **resource_details**: Detailed per-resource emissions
+- **top_emitters**: Highest emitting resources and services
 
-### ESGDataProcessor
+### Integration Benefits
+- **Real Data**: Actual Azure resource emissions, not estimates
+- **Automation**: Programmatic access via REST API
+- **Granularity**: Monthly, weekly, or daily reporting
+- **Scope Coverage**: Scope 1, 2, and 3 emissions tracking
 
-```python
-class ESGDataProcessor:
-    def load_data(self, file_path: str) -> pd.DataFrame
-    def validate_data(self, data: pd.DataFrame) -> pd.DataFrame
-    def process_data(self, data: pd.DataFrame) -> pd.DataFrame
-    def save_data(self, data: pd.DataFrame, output_path: str) -> None
+## 🚀 Getting Started - Interactive Demo
+
+Run the enhanced interactive demo to see the complete ESG reporting pipeline in action:
+
+```bash
+python enhanced_demo.py
 ```
 
-### BlobStorageClient
-
-```python
-class BlobStorageClient:
-    def upload_file(self, local_path: str, container: str, blob_name: str) -> None
-    def download_file(self, container: str, blob_name: str, local_path: str) -> None
-    def list_files(self, container: str) -> List[str]
-    def delete_file(self, container: str, blob_name: str) -> None
-```
+This demo showcases:
+1. **Sample ESG Data Processing**: Traditional ESG data validation and cleaning
+2. **Azure Carbon Optimization**: Fetching real Azure emissions data
+3. **Integration**: Combining Azure emissions with ESG reporting
+4. **Analytics**: Generating comprehensive reports and insights
 
 ## 🤝 Contributing
 
@@ -310,6 +324,7 @@ For issues and questions:
 ## 🔗 Related Resources
 
 - [Microsoft Sustainability Manager Documentation](https://docs.microsoft.com/en-us/industry/sustainability/)
+- [Azure Carbon Optimization API](https://docs.microsoft.com/en-us/rest/api/sustainability/)
 - [Azure Blob Storage Python SDK](https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python)
 - [Azure Developer CLI](https://docs.microsoft.com/en-us/azure/developer/azure-developer-cli/)
 - [ESG Reporting Best Practices](https://docs.microsoft.com/en-us/industry/sustainability/esg-reporting)

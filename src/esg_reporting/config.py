@@ -32,11 +32,11 @@ class Settings(BaseSettings):
     batch_size: int = Field(1000, env="BATCH_SIZE")
     max_file_size_mb: int = Field(100, env="MAX_FILE_SIZE_MB")
     parallel_upload_threshold_mb: int = Field(50, env="PARALLEL_UPLOAD_THRESHOLD_MB")
-    
-    # Monitoring
+      # Monitoring
     log_level: str = Field("INFO", env="LOG_LEVEL")
     enable_azure_monitor: bool = Field(True, env="ENABLE_AZURE_MONITOR")
-      class Config:
+    
+    class Config:
         env_file = ".env"
         case_sensitive = False
         extra = "allow"  # Allow extra fields from environment
