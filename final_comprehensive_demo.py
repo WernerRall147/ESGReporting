@@ -104,21 +104,25 @@ def fetch_azure_emissions_data(subscription_id: str):
         # Initialize the Carbon Optimization client
         client = CarbonOptimizationClient()
         print("✅ Carbon Optimization client initialized successfully")
-          # Define date range (last 6 months for testing)
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=180)
-          query = EmissionsQuery(
+        
+        # Define date range using API-supported dates
+        # API supports: 2024-04-01 to 2025-04-01
+        start_date = "2024-10-01"  # Recent period within API range
+        end_date = "2024-12-31"    # End of 2024 within API range
+        
+        query = EmissionsQuery(
             report_type=ReportType.OVERALL_SUMMARY_REPORT,  # Use valid report type
             date_range=DateRange(
-                start=start_date.strftime('%Y-%m-%d'),
-                end=end_date.strftime('%Y-%m-%d')
+                start=start_date,
+                end=end_date
             ),
             subscription_list=[subscription_id],
             carbon_scope_list=[EmissionScope.SCOPE1, EmissionScope.SCOPE2]
         )
         
-        print(f"📅 Fetching emissions data from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+        print(f"📅 Fetching emissions data from {start_date} to {end_date}")
         print(f"📊 Subscription: {subscription_id}")
+        print(f"🔍 Report Type: {query.report_type.value}")
         
         # Fetch the data
         emissions_df = client.get_emissions_data(query)
@@ -209,10 +213,9 @@ def demonstrate_processor_functionality():
                 # Load and process the file
                 df, metadata = processor.read_file(sample_file)
                 print(f"   ✅ Loaded {len(df)} records")
-                
-                # Get data quality metrics
-                quality_report = processor.get_data_quality_metrics(df)
-                print(f"   📊 Data Quality Score: {quality_report.get('overall_score', 'N/A')}")
+                  # Validate data instead of quality metrics
+                validation_report = processor.validate_esg_data(df, "emissions")
+                print(f"   📊 Validation: {len(validation_report.get('errors', []))} errors, {len(validation_report.get('warnings', []))} warnings")
                 
         print("✅ ESG Data Processor working correctly!")
         return True
@@ -230,7 +233,7 @@ def demonstrate_cli_commands():
     
     commands_to_test = [
         (['--help'], "Main help"),
-        (['configure', '--help'], "Configure help"),
+        (['config', '--help'], "Configure help"),
         (['process', '--help'], "Process help"),
         (['azure', '--help'], "Azure commands help"),
     ]
