@@ -492,7 +492,14 @@ def integrate_emissions(emissions_file, activities_file, output_dir, subscriptio
         click.echo(f"Integration complete!")
         click.echo(f"Integrated report: {report_file}")
         click.echo(f"Summary report: {summary_file}")
-        click.echo(f"Total CO2 equivalent: {integrated_df.get('total_emissions_kg_co2', integrated_df.get('emissions_kg_co2', [0])).sum():.2f} kg")
+        # Calculate total emissions safely
+        if 'total_emissions_kg_co2' in integrated_df.columns:
+            total_emissions = integrated_df['total_emissions_kg_co2'].sum()
+        elif 'emissions_kg_co2' in integrated_df.columns:
+            total_emissions = integrated_df['emissions_kg_co2'].sum()
+        else:
+            total_emissions = 0.0
+        click.echo(f"Total CO2 equivalent: {total_emissions:.2f} kg")
         
     except Exception as e:
         click.echo(f"Error integrating emissions data: {e}", err=True)
@@ -507,13 +514,63 @@ def list_subscriptions():
     Run 'az login' first to authenticate.
     """
     try:
-        click.echo("Listing available Azure subscriptions...")
+        import subprocess
+        import json
         
-        # For now, we'll use a placeholder since subscription listing requires different API
-        # In a real implementation, you'd use Azure Resource Manager API
-        click.echo("Note: This command requires Azure Resource Manager API integration.")
-        click.echo("Please use the Azure CLI 'az account list' command to list subscriptions.")
-        click.echo("Then use the subscription ID with the 'fetch' command.")
+        click.echo("Listing available Azure subscriptions...")
+          # Try to get subscriptions using Azure CLI
+        try:
+            # Try different approaches to find az command
+            az_commands = ['az', 'az.cmd', 'C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd']
+            
+            result = None
+            for az_cmd in az_commands:
+                try:
+                    result = subprocess.run(
+                        [az_cmd, 'account', 'list', '--output', 'json'],
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                        shell=True
+                    )
+                    break
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    continue
+            
+            if result is None:
+                raise FileNotFoundError("Azure CLI command not found")
+            
+            subscriptions = json.loads(result.stdout)
+            
+            if not subscriptions:
+                click.echo("No subscriptions found. Please run 'az login' first.")
+                return
+            
+            click.echo(f"Found {len(subscriptions)} subscription(s):")
+            click.echo()
+            
+            for sub in subscriptions:
+                name = sub.get('name', 'N/A')
+                sub_id = sub.get('id', 'N/A')
+                state = sub.get('state', 'N/A')
+                is_default = sub.get('isDefault', False)
+                
+                status_marker = " (default)" if is_default else ""
+                click.echo(f"  📋 Name: {name}{status_marker}")
+                click.echo(f"     ID: {sub_id}")
+                click.echo(f"     State: {state}")
+                click.echo()
+                
+        except subprocess.CalledProcessError as e:
+            click.echo("Failed to run Azure CLI. Please ensure:")
+            click.echo("1. Azure CLI is installed")
+            click.echo("2. You are authenticated (run 'az login')")
+            click.echo("3. You have appropriate permissions")
+            click.echo(f"Error: {e}")
+            
+        except FileNotFoundError:
+            click.echo("Azure CLI not found. Please install Azure CLI:")
+            click.echo("https://docs.microsoft.com/en-us/cli/azure/install-azure-cli")
         
     except Exception as e:
         click.echo(f"Error listing subscriptions: {e}", err=True)
