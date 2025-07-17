@@ -22,49 +22,59 @@ A comprehensive Python-based solution for automating ESG data export from Micros
 
 ## 🛠️ Quick Start
 
-### 1. Clone and Setup
+### 1. Prerequisites
+
+- **Azure subscription** with appropriate permissions
+- **Azure Developer CLI (azd)** - [Install azd](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/install-azd)
+- **Azure CLI** - [Install Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli)
+- **Python 3.8+** with pip
+
+### 2. Clone and Setup
 
 ```bash
 git clone <repository-url>
 cd ESGReporting
+
+# Authenticate with Azure
+az login
+
+# Install Python dependencies
 pip install -r requirements.txt
 pip install -e .
 ```
 
-### 2. Deploy Azure Infrastructure
+### 3. Deploy to Azure (One Command!)
 
 ```bash
-# Initialize azd environment
-azd init
-
-# Deploy Azure resources
+# Deploy everything to Azure
 azd up
 ```
 
-This will deploy:
-- Azure Storage Account with blob containers
-- Azure Key Vault for secrets management
-- Azure Log Analytics workspace for monitoring
-- Managed Identity for secure authentication
+This will automatically:
+- Create a new Azure environment
+- Deploy all Azure resources using Bicep templates
+- Configure authentication and permissions
+- Set up monitoring and logging
 
-### 3. Configure Environment
+**Azure Resources Created:**
+- Azure Storage Account (for ESG data)
+- Azure Key Vault (for secrets)
+- Azure Container Apps (for hosting)
+- Azure Container Registry (for container images)
+- Log Analytics & Application Insights (for monitoring)
+- Managed Identity (for secure authentication)
 
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit .env with your Azure resource details
-# The azd deployment will output the required values
-```
-
-### 4. Test the Installation
+### 4. Verify Deployment
 
 ```bash
-# Run tests to ensure everything is working
-pytest tests/
+# Check deployment status
+azd show
 
 # Test CLI functionality
 esg-reporting --help
+
+# Run tests
+pytest tests/ -v
 ```
 
 ## 📖 Usage
@@ -357,6 +367,39 @@ This demo showcases:
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🆘 Troubleshooting
+
+### Common Issues
+
+**Problem**: `azd up` fails with authentication error
+```bash
+# Solution: Ensure you're logged in to Azure
+az login
+az account set --subscription <your-subscription-id>
+```
+
+**Problem**: Python module not found after installation
+```bash
+# Solution: Reinstall in development mode
+pip install -e .
+```
+
+**Problem**: Azure resources already exist
+```bash
+# Solution: Use existing environment or clean up
+azd env list
+azd env select <existing-environment>
+# OR clean up and redeploy
+azd down --force --purge
+azd up
+```
+
+**Problem**: Permission denied when accessing Azure resources
+```bash
+# Solution: Check your Azure RBAC permissions
+az role assignment list --assignee $(az ad signed-in-user show --query id -o tsv)
+```
 
 ## 🆘 Support
 
