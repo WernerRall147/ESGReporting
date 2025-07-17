@@ -4,6 +4,10 @@ azure-identity>=1.15.0
 azure-keyvault-secrets>=4.7.0
 azure-monitor-opentelemetry>=1.2.0
 
+# Web API Framework
+flask>=2.3.0
+gunicorn>=21.2.0
+
 # Data Processing
 pandas>=2.1.0
 openpyxl>=3.1.0

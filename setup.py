@@ -34,7 +34,7 @@ setup(
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "esg-cli=esg_reporting.cli:cli",
+            "esg-reporting=esg_reporting.cli:cli",
         ],
     },
 )

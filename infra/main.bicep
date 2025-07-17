@@ -11,6 +11,7 @@ param location string = resourceGroup().location
 param principalId string = ''
 
 // Variables
+// Generate unique resource suffix
 var resourceToken = toLower(uniqueString(subscription().id, resourceGroup().id, environmentName))
 var tags = {
   'azd-env-name': environmentName
@@ -37,9 +38,11 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
       services: {
         blob: {
           enabled: true
+          keyType: 'Account'
         }
         file: {
           enabled: true
+          keyType: 'Account'
         }
       }
       keySource: 'Microsoft.Storage'
@@ -50,6 +53,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
     }
     supportsHttpsTrafficOnly: true
     minimumTlsVersion: 'TLS1_2'
+    publicNetworkAccess: 'Enabled'
   }
 }
 
@@ -170,9 +174,7 @@ resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' =
 resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' = {
   name: 'cae-esg-${resourceToken}'
   location: location
-  tags: union(tags, {
-    'azd-service-name': 'esg-reporting'
-  })
+  tags: tags
   properties: {
     appLogsConfiguration: {
       destination: 'log-analytics'
@@ -249,6 +251,263 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
         minReplicas: 0
         maxReplicas: 10
       }
+    }
+  }
+}
+
+// Logic App for ESG Reporting Automation
+resource logicApp 'Microsoft.Logic/workflows@2019-05-01' = {
+  name: 'logic-esg-${resourceToken}'
+  location: location
+  tags: union(tags, {
+    'azd-service-name': 'esg-logic-app'
+  })
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${managedIdentity.id}': {}
+    }
+  }
+  properties: {
+    state: 'Enabled'
+    definition: {
+      '$schema': 'https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#'
+      contentVersion: '1.0.0.0'
+      parameters: {
+        storageAccountName: {
+          defaultValue: storageAccount.name
+          type: 'String'
+        }
+        containerAppUrl: {
+          defaultValue: 'https://${containerApp.properties.configuration.ingress.fqdn}'
+          type: 'String'
+        }
+        keyVaultUrl: {
+          defaultValue: keyVault.properties.vaultUri
+          type: 'String'
+        }
+      }
+      triggers: {
+        Daily_ESG_Processing: {
+          type: 'Recurrence'
+          recurrence: {
+            frequency: 'Day'
+            interval: 1
+            schedule: {
+              hours: [
+                '9'
+              ]
+              minutes: [
+                0
+              ]
+            }
+            timeZone: 'UTC'
+          }
+        }
+        Manual_Trigger: {
+          type: 'Request'
+          kind: 'Http'
+          inputs: {
+            schema: {
+              type: 'object'
+              properties: {
+                fileName: {
+                  type: 'string'
+                }
+                containerName: {
+                  type: 'string'
+                }
+                processType: {
+                  type: 'string'
+                }
+              }
+            }
+          }
+        }
+      }
+      actions: {
+        Initialize_Variables: {
+          type: 'InitializeVariable'
+          inputs: {
+            variables: [
+              {
+                name: 'fileName'
+                type: 'string'
+                value: '@{coalesce(triggerBody()?[\'fileName\'], \'manual-trigger\')}'
+              }
+              {
+                name: 'processType'
+                type: 'string'
+                value: '@{coalesce(triggerBody()?[\'processType\'], \'download-all\')}'
+              }
+            ]
+          }
+        }
+        Log_Start: {
+          type: 'Http'
+          inputs: {
+            method: 'POST'
+            uri: '@{parameters(\'containerAppUrl\')}/api/log'
+            headers: {
+              'Content-Type': 'application/json'
+            }
+            body: {
+              level: 'INFO'
+              message: 'Logic App started ESG workflow'
+              fileName: '@variables(\'fileName\')'
+              processType: '@variables(\'processType\')'
+              timestamp: '@utcNow()'
+            }
+          }
+          runAfter: {
+            Initialize_Variables: [
+              'Succeeded'
+            ]
+          }
+        }
+        Process_ESG_Data: {
+          type: 'Switch'
+          expression: '@variables(\'processType\')'
+          cases: {
+            Download_All: {
+              case: 'download-all'
+              actions: {
+                Download_All_ESG_Data: {
+                  type: 'Http'
+                  inputs: {
+                    method: 'POST'
+                    uri: '@{parameters(\'containerAppUrl\')}/api/download/all'
+                    headers: {
+                      'Content-Type': 'application/json'
+                    }
+                    body: {
+                      timestamp: '@utcNow()'
+                    }
+                    authentication: {
+                      type: 'ManagedServiceIdentity'
+                    }
+                  }
+                }
+              }
+            }
+            Download_Emissions: {
+              case: 'download-emissions'
+              actions: {
+                Download_Emissions_Data: {
+                  type: 'Http'
+                  inputs: {
+                    method: 'POST'
+                    uri: '@{parameters(\'containerAppUrl\')}/api/download/emissions'
+                    headers: {
+                      'Content-Type': 'application/json'
+                    }
+                    body: {
+                      timestamp: '@utcNow()'
+                    }
+                    authentication: {
+                      type: 'ManagedServiceIdentity'
+                    }
+                  }
+                }
+              }
+            }
+            Download_Activities: {
+              case: 'download-activities'
+              actions: {
+                Download_Activities_Data: {
+                  type: 'Http'
+                  inputs: {
+                    method: 'POST'
+                    uri: '@{parameters(\'containerAppUrl\')}/api/download/activities'
+                    headers: {
+                      'Content-Type': 'application/json'
+                    }
+                    body: {
+                      timestamp: '@utcNow()'
+                    }
+                    authentication: {
+                      type: 'ManagedServiceIdentity'
+                    }
+                  }
+                }
+              }
+            }
+          }
+          default: {
+            actions: {
+              Process_Existing_Data: {
+                type: 'Http'
+                inputs: {
+                  method: 'POST'
+                  uri: '@{parameters(\'containerAppUrl\')}/api/process'
+                  headers: {
+                    'Content-Type': 'application/json'
+                  }
+                  body: {
+                    fileName: '@variables(\'fileName\')'
+                    container: 'esg-data'
+                    outputContainer: 'processed-data'
+                  }
+                  authentication: {
+                    type: 'ManagedServiceIdentity'
+                  }
+                }
+              }
+            }
+          }
+          runAfter: {
+            Log_Start: [
+              'Succeeded'
+            ]
+          }
+        }
+        Notify_Success: {
+          type: 'Http'
+          inputs: {
+            method: 'POST'
+            uri: '@{parameters(\'containerAppUrl\')}/api/notify'
+            headers: {
+              'Content-Type': 'application/json'
+            }
+            body: {
+              status: 'SUCCESS'
+              message: 'ESG workflow completed successfully'
+              fileName: '@variables(\'fileName\')'
+              processType: '@variables(\'processType\')'
+              timestamp: '@utcNow()'
+            }
+          }
+          runAfter: {
+            Process_ESG_Data: [
+              'Succeeded'
+            ]
+          }
+        }
+        Handle_Errors: {
+          type: 'Http'
+          inputs: {
+            method: 'POST'
+            uri: '@{parameters(\'containerAppUrl\')}/api/notify'
+            headers: {
+              'Content-Type': 'application/json'
+            }
+            body: {
+              status: 'ERROR'
+              message: 'ESG workflow failed'
+              processType: '@variables(\'processType\')'
+              timestamp: '@utcNow()'
+            }
+          }
+          runAfter: {
+            Process_ESG_Data: [
+              'Failed'
+              'Skipped'
+              'TimedOut'
+            ]
+          }
+        }
+      }
+      outputs: {}
     }
   }
 }
@@ -345,3 +604,5 @@ output RESOURCE_GROUP_ID string = resourceGroup().id
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerRegistry.properties.loginServer
 output AZURE_CONTAINER_APPS_ENVIRONMENT_ID string = containerAppsEnvironment.id
 output AZURE_CONTAINER_APP_NAME string = containerApp.name
+output LOGIC_APP_NAME string = logicApp.name
+output LOGIC_APP_ID string = logicApp.id

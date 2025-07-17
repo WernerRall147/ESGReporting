@@ -2,6 +2,95 @@
 
 A comprehensive Python-based solution for automating ESG data export from Microsoft Sustainability Manager, uploading to Azure Blob Storage, and processing via Azure services.
 
+## 🏗️ Architecture Overview
+
+```mermaid
+graph TB
+    subgraph "Microsoft Sustainability Manager"
+        MSM[Microsoft Sustainability Manager]
+        ESGData[ESG Data Sources]
+        ESGData --> MSM
+    end
+
+    subgraph "Azure Cloud Environment"
+        subgraph "Data Ingestion Layer"
+            LA[Logic Apps Workflow]
+            CA[Container Apps - Flask API]
+            LA --> CA
+        end
+        
+        subgraph "Storage Layer"
+            BS[Azure Blob Storage]
+            KV[Azure Key Vault]
+            BS --> |Raw ESG Data| BS1[esg-raw-data]
+            BS --> |Processed Data| BS2[esg-processed-data]
+        end
+        
+        subgraph "Processing Layer"
+            CP[ESG Data Processor]
+            CO[Carbon Optimization API]
+            CP --> BS
+            CO --> CP
+        end
+        
+        subgraph "Security & Identity"
+            MI[Managed Identity]
+            RBAC[RBAC Permissions]
+            MI --> BS
+            MI --> KV
+            MI --> LA
+        end
+        
+        subgraph "Monitoring & Logging"
+            AI[Application Insights]
+            LAW[Log Analytics Workspace]
+            AI --> LAW
+        end
+        
+        subgraph "Container Infrastructure"
+            ACR[Azure Container Registry]
+            CAE[Container Apps Environment]
+            ACR --> CA
+            CA --> CAE
+        end
+    end
+
+    subgraph "External Integrations"
+        AzureRes[Azure Resources]
+        PowerBI[Power BI]
+        Synapse[Azure Synapse]
+    end
+
+    %% Data Flow
+    MSM --> LA
+    LA --> |HTTP Triggers| CA
+    CA --> |Download ESG Data| MSM
+    CA --> |Store Raw Data| BS1
+    CA --> |Process Data| CP
+    CP --> |Store Processed| BS2
+    CO --> |Azure Emissions| AzureRes
+    
+    %% Monitoring Flow
+    CA --> AI
+    LA --> AI
+    CP --> AI
+    
+    %% Integration Flow
+    BS2 --> PowerBI
+    BS2 --> Synapse
+    
+    %% Styling
+    classDef azure fill:#0078d4,stroke:#fff,stroke-width:2px,color:#fff
+    classDef storage fill:#ff6b35,stroke:#fff,stroke-width:2px,color:#fff
+    classDef processing fill:#00bcf2,stroke:#fff,stroke-width:2px,color:#fff
+    classDef external fill:#107c10,stroke:#fff,stroke-width:2px,color:#fff
+    
+    class LA,CA,AI,LAW,ACR,CAE,MI azure
+    class BS,KV,BS1,BS2 storage
+    class CP,CO processing
+    class MSM,PowerBI,Synapse,AzureRes external
+```
+
 ## 🚀 Features
 
 - **Automated Data Processing**: Process ESG data from various formats (CSV, Excel, JSON)
@@ -46,15 +135,19 @@ pip install -e .
 ### 3. Deploy to Azure (One Command!)
 
 ```bash
-# Deploy everything to Azure
+# Option 1: Use the automated deployment script (Recommended)
+.\deploy-with-rg.ps1
+
+# Option 2: Use azd directly (requires manual resource group creation)
 azd up
 ```
 
-This will automatically:
-- Create a new Azure environment
+**The automated deployment script (`deploy-with-rg.ps1`) will:**
+- Automatically create the required resource group
 - Deploy all Azure resources using Bicep templates
 - Configure authentication and permissions
 - Set up monitoring and logging
+- Use the single `esg-prod` environment consistently
 
 **Azure Resources Created:**
 - Azure Storage Account (for ESG data)
@@ -63,6 +156,7 @@ This will automatically:
 - Azure Container Registry (for container images)
 - Log Analytics & Application Insights (for monitoring)
 - Managed Identity (for secure authentication)
+- Logic Apps (for ESG workflow automation)
 
 ### 4. Verify Deployment
 
@@ -134,35 +228,72 @@ files = client.list_files("container-name")
 
 ## 🔄 Recommended Workflow
 
-### 1. Manual Export from Microsoft Sustainability Manager
-- Navigate to the relevant entity (emissions, activities, suppliers)
-- Use the Export button to download data as CSV/Excel
-- Save files locally for processing
+### 1. Automated ESG Data Download via Logic Apps
+The Logic App automatically:
+- **Connects to Microsoft Sustainability Manager** using configured credentials
+- **Downloads ESG data** on schedule or manual trigger
+- **Uploads raw data** to Azure Blob Storage
+- **Triggers processing** workflow automatically
+
+```bash
+# Manual trigger for downloading all ESG data types
+curl -X POST [LOGIC_APP_URL] \
+  -H "Content-Type: application/json" \
+  -d '{"processType": "download-all"}'
+
+# Download specific ESG data types
+curl -X POST [LOGIC_APP_URL] \
+  -H "Content-Type: application/json" \
+  -d '{"processType": "download-emissions"}'
+
+curl -X POST [LOGIC_APP_URL] \
+  -H "Content-Type: application/json" \
+  -d '{"processType": "download-activities"}'
+```
+
+### Available API Endpoints
+
+The deployed Flask API provides the following endpoints for ESG operations:
+
+#### ESG Data Download Endpoints
+- `POST /api/download/all` - Download all ESG data types from Microsoft Sustainability Manager
+- `POST /api/download/emissions` - Download emissions data specifically
+- `POST /api/download/activities` - Download activities data specifically
+
+#### Processing & Monitoring Endpoints
+- `POST /api/process` - Process existing ESG data files
+- `POST /api/log` - Application logging endpoint
+- `POST /api/notify` - Send notifications and alerts
+- `POST /api/carbon/fetch` - Fetch carbon optimization data
+- `GET /api/health` - Health check endpoint
+
+#### Example API Calls
+
+```bash
+# Download all ESG data
+curl -X POST https://[YOUR-CONTAINER-APP].azurecontainerapps.io/api/download/all \
+  -H "Content-Type: application/json"
+
+# Download emissions data only
+curl -X POST https://[YOUR-CONTAINER-APP].azurecontainerapps.io/api/download/emissions \
+  -H "Content-Type: application/json"
+```
 
 ### 2. Azure Carbon Optimization Integration
 ```bash
-# Fetch real Azure emissions data directly from Azure Carbon Optimization API
-esg-reporting azure fetch --subscription-id YOUR_SUB_ID --tenant-id YOUR_TENANT_ID \
-  --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET \
+# Logic App can also fetch Azure emissions data
+# This is triggered automatically or manually
+esg-reporting azure fetch --subscription-id YOUR_SUB_ID \
   --report-type monthly_summary --start-date 2024-01-01 --end-date 2024-12-31 \
   --output azure_emissions.csv
-
-# Integrate Azure emissions with ESG reporting
-esg-reporting azure integrate --emissions-file azure_emissions.csv \
-  --activities-file activities.csv --output-dir integrated_reports
 ```
 
-### 3. Upload and Process Data
-```bash
-# Upload raw data to Azure
-esg-reporting upload sustainability_export.csv --container raw-data
-
-# Process the data with validation and transformations
-esg-reporting process sustainability_export.csv --output processed_data.csv
-
-# Upload processed data
-esg-reporting upload processed_data.csv --container processed-data
-```
+### 3. Automated Processing Pipeline
+Once data is downloaded, the Logic App automatically:
+- **Validates data** format and structure
+- **Processes data** with transformations
+- **Stores processed data** in designated containers
+- **Sends notifications** on completion/failure
 
 ### 4. Integration with Azure Services
 
